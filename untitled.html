@@ -1,0 +1,632 @@
+
+<html>
+<head>
+  <script>
+    var thresh1,image1,histCanvas;
+    var rr,gg,bb,qq;
+    var rval,gval,bval,qval;
+    var red, green, blue, quant = 64;
+    var autored = 0, autogreen = 0, autoblue = 0, autolevel = 0;
+    var invertFlag = false, lockFlag = false, quantFlag = false, eqnFlag = false;
+    var cumFlag = false, logFlag = false;
+    var showGray = true, showFills = true, showGrid = true, showQuant = true;
+    var showRed = true, showGreen = true, showBlue = true;
+    var hist = {}, cumhist = [];
+    var updateCanvasesFlag = true, drawingHist = false;
+    var interval;
+
+    function drawHist() {
+      drawingHist = true;   // .. no updates while drawing
+      // Canvas is width 512, height 200
+      var ctx = histCanvas1.getContext("2d");
+
+      ctx.clearRect(0,0,650,200);
+
+      // Draw the filled areas first
+      if (showFills) {
+        ctx.globalAlpha = 0.50;
+        if (showRed)
+            drawArray(ctx, ID.r, "#FF0000", true,  red,     invertFlag, logFlag);
+        if (showGreen)
+            drawArray(ctx, ID.g, "#00FF00", true,  green,   invertFlag, logFlag);
+        if (showBlue)
+            drawArray(ctx, ID.b, "#0000FF", true,  blue,    invertFlag, logFlag);
+        if (showGray && !(showRed || showGreen || showBlue))
+            drawArray(ctx, ID.k, "#777777", true,  (red+green+blue)/3, 
+                    invertFlag, logFlag);
+      }
+      // then the rest of the curve atop
+      ctx.globalAlpha = 1.0;
+      if (showBlue)
+          drawArray(ctx, ID.b, "#5555FF", false,     0,   invertFlag, logFlag);
+      if (showGreen)
+          drawArray(ctx, ID.g, "#55FF55", false,     0,   invertFlag, logFlag);
+      if (showRed)
+          drawArray(ctx, ID.r, "#FF7777", false,     0,   invertFlag, logFlag);
+
+      if (showGray)
+          drawArray(ctx, ID.k, "#FFFFFF", false,     0,   invertFlag, logFlag);
+
+      if (showGrid) {
+        // Draw XOR Axes Box
+        // ctx.globalCompositeOperation = 'xor';    // ...seems not to work..
+        if (cumFlag) {      // Y=X line only makes sense for Cum Hists
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = "#7F7F7F";
+          dashedLine(ctx,0,200,512,0,[1,1]); 
+        }
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.strokeRect(0,0,512,200);
+
+        ctx.lineWidth = 1;
+        dashedLine(ctx,256,0,256,200,[5,3,1,3]); 
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "10pt Arial";
+        if (logFlag) {
+          var Yval1    = 1 - Math.log(ID.r.sum/2)/Math.log(ID.r.sum);
+          var Yval10   = 1 - Math.log(ID.r.sum/20)/Math.log(ID.r.sum);
+          var Yval100  = 1 - Math.log(ID.r.sum/200)/Math.log(ID.r.sum);
+          var Yval1000 = 1 - Math.log(ID.r.sum/2000)/Math.log(ID.r.sum);
+          var midYval = 1 - Math.log(2)/Math.log(ID.r.sum);
+          dashedLine(ctx,0,200-200*Yval1,   512,200-200*Yval1,   [1,3]); 
+          dashedLine(ctx,0,200-200*Yval10,  512,200-200*Yval10,  [1,3]); 
+          dashedLine(ctx,0,200-200*Yval100, 512,200-200*Yval100, [1,3]); 
+          dashedLine(ctx,0,200-200*Yval1000,512,200-200*Yval1000,[1,3]); 
+          dashedLine(ctx,0,200-200*midYval,512,200-200*midYval,[5,3,1,3]);
+          ctx.fillText('1 Count',516, 200-200*Yval1);
+          ctx.fillText('10 Counts',516, 200-200*Yval10);
+          ctx.fillText('100 Counts',516, 200-200*Yval100);
+          ctx.fillText('1000 Counts',516, 200-200*Yval1000);
+          ctx.fillText('50% Cum',516, 200-200*midYval);
+        } else {
+          dashedLine(ctx,0,100,512,100,[5,3,1,3]);
+          ctx.fillText('50% Cum',516, 100);
+        }
+        // ctx.globalCompositeOperation = 'source-over';
+      }
+/*
+    To draw alternating dashes and dots, use (for example):
+    ctx.lineCap   = 'round';
+    ctx.lineWidth = 4;          // Lines 4px wide, dots of diameter 4
+    dashedLine(ctx,20,150,170,10,[30,10,0,10]);
+*/
+      drawingHist = false;   // .. no updates while drawing
+    }
+
+    function dashedLine(ctx,sx,sy,ex,ey,da) {
+      ctx.beginPath();
+      if (ctx.dashedLine) ctx.dashedLine(sx,sy,ex,ey,da); 
+      else                   dashedLine2(sx,sy,ex,ey,da); 
+      ctx.stroke();
+    }
+
+    function drawArray(ctx, arrin, color, filled, thresh, inverse, log) {
+      var i, yval;
+      var arr,amax;
+      if (cumFlag) { arr = arrin.cum;        amax = arrin.sum; }
+      else         { arr = arrin.hst;        amax = arrin.max; }
+
+      var minVal = 1/amax;
+      if (logFlag) { minVal = Math.abs(Math.log(minVal)); }
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (filled) ctx.fillStyle = color;
+      else        ctx.strokeStyle = color;
+      if (inverse) {
+        var level = (filled && !quantFlag)? thresh : arr.length-1;
+        if (!filled) ctx.moveTo(0, 200);
+        for (i = 0; i <= level; i++) {      // >
+          var ii = ((filled || showQuant) && quantFlag) ? arrin.ilut[255-i] : i;
+          yval = arr[ii]/amax;
+
+          // 0..1 --> -minVal..0, so we divide by minVal and add 1 --> 0..1
+          if (logFlag) { 
+            yval = (yval == 0) ? 0 : 1 + Math.log(yval)/minVal;
+          }
+          if (filled)   ctx.fillRect(2*i,200,2,-200*yval);
+          else          ctx.lineTo(2*i, 200-200*yval);
+        }
+        if (!filled) ctx.lineTo(2*(i-1), 200);
+      } else {
+        var level = (filled && !quantFlag)? thresh : 0;
+        if (!filled) ctx.moveTo(2*level, 200);
+        for (i = level; i < arr.length; i++) {     // >
+          var ii = ((filled || showQuant) && quantFlag) ? arrin.ilut[i] : i;
+          yval = arr[ii]/amax;
+          // 0..1 --> -minVal..0, so we divide by minVal and add 1 --> 0..1
+          if (logFlag) { 
+            yval = (yval == 0) ? 0 : 1 + Math.log(yval)/minVal;
+          }
+          if (filled)   ctx.fillRect(2*i,200,2,-200*yval);
+          else          ctx.lineTo(2*i, 200-200*yval);
+        }
+        if (filled)   ctx.fillRect(2*i,200,2,-200*yval);
+        else          ctx.lineTo(2*(i-1), 200);
+      }
+      ctx.closePath();
+      if (filled) {
+        ctx.fillStyle = color;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = color;
+        ctx.stroke();
+      }
+    }
+
+    function updateLuts() {
+      if (eqnFlag) getHistogram();
+      if (quantFlag) {
+        for (var i = 0; i < 256; i++) {  //>
+          var p     = invertFlag ? 255-i : i;
+          p = Math.floor(Math.round(p/(256/quant))*(256/quant));
+
+          ID.k.lut[i] = eqnFlag ? Math.floor(ID.k.cum[p]*255/ID.k.sum) : p;
+          ID.r.lut[i] = lockFlag ? ID.k.lut[i] : 
+                      eqnFlag ? Math.floor(ID.r.cum[p]*255/ID.r.sum) : p;
+          ID.g.lut[i] = lockFlag ? ID.k.lut[i] : 
+                      eqnFlag ? Math.floor(ID.g.cum[p]*255/ID.g.sum) : p;
+          ID.b.lut[i] = lockFlag ? ID.k.lut[i] : 
+                      eqnFlag ? Math.floor(ID.b.cum[p]*255/ID.b.sum) : p;
+        }
+      }
+/**/
+        else {
+        var gry = Math.round((red + green + blue)/3);
+        for (var i = 0; i < 256; i++) {  //>
+          var p     = invertFlag ? 255-i : i;
+          ID.k.lut[i] = p > gry ? 255 : 0;
+          ID.r.lut[i] = lockFlag ? ID.k.lut[i] : (p > red   ? 255 : 0);
+          ID.g.lut[i] = lockFlag ? ID.k.lut[i] : (p > green ? 255 : 0);
+          ID.b.lut[i] = lockFlag ? ID.k.lut[i] : (p > blue  ? 255 : 0);
+        }
+      }
+/**/
+      // Now build the inverse LUT.
+      for (var i = 0; i < 256; i++) {  //>
+        ID.k.ilut[i]=0;          ID.r.ilut[i]=0;
+        ID.g.ilut[i]=0;          ID.b.ilut[i]=0;
+      }
+      for (var i = 0; i < 256; i++) {  //>
+        var p     = invertFlag ? 255-i : i;
+        ID.k.ilut[ ID.k.lut[i] ] = p;
+        ID.r.ilut[ ID.r.lut[i] ] = p;
+        ID.g.ilut[ ID.g.lut[i] ] = p;
+        ID.b.ilut[ ID.b.lut[i] ] = p;
+      }
+
+      // Sample and hold-max pattern
+      var lev = 0, rlev = 0, glev = 0, blev = 0;
+      for (var i = 0; i < 256; i++) {  //>
+        lev = Math.max(lev, ID.k.ilut[i]);   ID.k.ilut[i]=lev;
+        rlev = Math.max(rlev, ID.r.ilut[i]); ID.r.ilut[i]= lockFlag ? lev : rlev;
+        glev = Math.max(glev, ID.g.ilut[i]); ID.g.ilut[i]= lockFlag ? lev : glev;
+        blev = Math.max(blev, ID.b.ilut[i]); ID.b.ilut[i]= lockFlag ? lev : blev;
+      }
+/**/
+    }
+
+    function updateCanvases() {
+        updateCanvasesFlag = true;  // ..flag a Synchronous update (ie when ready).
+        updateLuts();
+
+        var oval = document.getElementById('out');
+        oval.innerHTML = "<span>" 
+              + (quantFlag ? "Quantised" : "Thresheld")
+              + "<br>" 
+              + (eqnFlag ? "Equalised" : "Linear" + "</span");  //>
+    }
+
+    function timerCallback() {
+
+
+        if (!updateCanvasesFlag) return;    // ...nothing's changed 
+        if (!image1) return;    // .. or image not loaded yet.
+        if (!image1.complete) return;
+        if (drawingHist) return;   // .. no updates while drawing Histogram
+
+        var ctx = thresh1.getContext("2d");
+        var ctx0 = hidden1.getContext("2d");
+        ctx.drawImage(hidden1, 0, 0);
+
+        var d = ctx0.getImageData(0, 0, hidden1.width, hidden1.height);
+        var data = d.data;
+        var datalen = hidden1.width*hidden1.height-1;
+        var p0 = 0, p1 = 1, p2 = 2, p3 = 3;
+        for (var i = 0; i < datalen; i++) {     //>
+          data[p0+=4] = showRed   ? ID.r.lut[data[p0]] : invertFlag ? 255 : 0;
+          data[p1+=4] = showGreen ? ID.g.lut[data[p1]] : invertFlag ? 255 : 0;
+          data[p2+=4] = showBlue  ? ID.b.lut[data[p2]] : invertFlag ? 255 : 0;
+        }
+        ctx.putImageData(d, 0, 0);
+        drawHist();
+
+        updateCanvasesFlag = false;
+    }
+
+    function toggleInvert(reset) {
+        invertFlag = !invertFlag;
+        document.getElementById('invert').checked = invertFlag; 
+        if (!reset) updateCanvases();
+    }
+
+    function toggleLock(reset) {
+        lockFlag = !lockFlag;
+        document.getElementById('lock').checked = lockFlag; 
+        rr.value = red;
+        rr.update();     // Others will auto-update if flag set
+        if (!reset) updateCanvases();
+    }
+
+    function toggleCumulativeHist(reset) {
+        cumFlag = !cumFlag;
+        document.getElementById('cum').checked = cumFlag; 
+        if (!reset) {
+          getHistogram();     // Rebuild the histogram (Cum/noCum)
+          drawHist();
+        }
+    }
+
+    function toggleLogHist(reset) {
+        logFlag = !logFlag;
+        document.getElementById('log').checked = logFlag; 
+        if (!reset) drawHist();
+    }
+
+    function toggleEqn(reset) {
+        eqnFlag = !eqnFlag;
+        document.getElementById('eqn').checked = eqnFlag; 
+        if (!reset) updateCanvases();
+    }
+
+    function toggleShow(which,reset) {
+        if (which == 'k' || which == 'a' || reset) {
+          showGray  = !showGray;  
+          document.getElementById('showgray').checked = showGray; 
+        }
+        if (which == 'r' || which == 'a' || reset) {
+          showRed   = !showRed;
+          document.getElementById('showred').checked = showRed; 
+        }
+        if (which == 'g' || which == 'a' || reset) {
+          showGreen = !showGreen;
+          document.getElementById('showgreen').checked = showGreen; 
+        }
+        if (which == 'b' || which == 'a' || reset) {
+          showBlue  = !showBlue;
+          document.getElementById('showblue').checked = showBlue; 
+        }
+        if (which == 'f' || which == 'a' || reset) {
+          showFills = !showFills;
+          document.getElementById('showfills').checked = showFills; 
+        }
+        if (which == 'q' || which == 'a' || reset) {
+          showQuant = !showQuant;
+          document.getElementById('showquant').checked = showQuant; 
+        }
+        if (which == 'x' || which == 'a' || reset) {
+          showGrid = !showGrid;
+          document.getElementById('showgrid').checked = showGrid;
+        }
+        if (!reset) updateCanvases();
+    }
+
+    // Preallocate Array
+    function Array256(default_value) {
+      arr = [];
+      for (var i=0; i<256; i++) {   //>
+        arr[i] = default_value; 
+      } 
+      return arr
+    }
+    
+    function initImageDescriptor() {
+      ID = {};    // Image Descriptor
+      ID.r = {};      ID.g = {};      ID.b = {};      ID.k = {};
+      // Create r,g,b substructures - more manageable.
+      ID.r.hst = new Array256(0);
+      ID.g.hst = new Array256(0);
+      ID.b.hst = new Array256(0);
+      ID.k.hst = new Array256(0);
+      ID.r.cum = new Array256(0);
+      ID.g.cum = new Array256(0);
+      ID.b.cum = new Array256(0);
+      ID.k.cum = new Array256(0);
+      ID.r.lut = new Array256(0);
+      ID.g.lut = new Array256(0);
+      ID.b.lut = new Array256(0);
+      ID.k.lut = new Array256(0);
+      ID.r.ilut = new Array256(0);
+      ID.g.ilut = new Array256(0);
+      ID.b.ilut = new Array256(0);
+      ID.k.ilut = new Array256(0);
+      ID.r.sum = 0; ID.g.sum = 0;  ID.b.sum = 0;  ID.k.sum = 0;
+      ID.r.max = 0; ID.g.max = 0;  ID.b.max = 0;  ID.k.max = 0;
+    }
+
+    function getHistogram() {
+      for (var i = 0; i < ID.r.hst.length; i++) ID.r.hst[i] = 0;    //>
+      for (var i = 0; i < ID.g.hst.length; i++) ID.g.hst[i] = 0;    //>
+      for (var i = 0; i < ID.b.hst.length; i++) ID.b.hst[i] = 0;    //>
+
+      var ctx = thresh1.getContext("2d");
+      var ctx0 = hidden1.getContext("2d");
+      var dataDesc = ctx0.getImageData(0, 0, hidden1.width, hidden1.height);
+      var data = dataDesc.data;
+      var len = thresh1.width*thresh1.height-1;
+      var p0 = 0, p1 = 1, p2 = 2, p3 = 3;
+      for (var i = 0; i < len; i++) {     //>
+          ID.r.hst[data[p0+=4]]++;
+          ID.g.hst[data[p1+=4]]++;
+          ID.b.hst[data[p2+=4]]++;
+      }
+      var halfCount = len/2;
+
+      ID.r.sum = 0; ID.g.sum = 0;  ID.b.sum = 0;  ID.k.sum = 0;
+      ID.r.max = 0; ID.g.max = 0;  ID.b.max = 0;  ID.k.max = 0;
+      autored = -1;   autogreen = -1;  autoblue = -1;   autolevel = -1;
+
+      for (var i = 0; i < ID.k.hst.length; i++) {     //>
+        ID.k.hst[i] = (ID.r.hst[i]+ID.g.hst[i]+ID.b.hst[i])/3;
+        ID.k.sum += ID.k.hst[i];
+        ID.k.cum[i] = ID.k.sum;
+        if (autolevel == -1 && ID.k.sum > halfCount) autolevel = i;
+        ID.k.max  = Math.max(ID.k.hst[i],ID.k.max);
+      }
+      for (var i = 0; i < ID.r.hst.length; i++) {     //>
+        ID.r.sum += ID.r.hst[i];
+        ID.r.cum[i] = ID.r.sum;
+        if (autored == -1 && ID.r.sum > halfCount) autored = i;
+        ID.r.max  = Math.max(ID.r.hst[i],ID.r.max);
+      }
+      for (var i = 0; i < ID.g.hst.length; i++) {     //>
+        ID.g.sum += ID.g.hst[i];
+        ID.g.cum[i] = ID.g.sum;
+        if (autogreen == -1 && ID.g.sum > halfCount) autogreen = i;
+        ID.g.max  = Math.max(ID.g.hst[i],ID.g.max);
+      }
+      for (var i = 0; i < ID.b.hst.length; i++) {     //>
+        ID.b.sum += ID.b.hst[i];
+        ID.b.cum[i] = ID.b.sum;
+        if (autoblue == -1 && ID.b.sum > halfCount) autoblue = i;
+        ID.b.max  = Math.max(ID.b.hst[i],ID.b.max);
+      }
+    }
+
+    function loadImage(src) {
+        if (src) {
+          image1.src = src;
+          image1.onload = function() {
+            var ctx = thresh1.getContext("2d");
+            var ctx0 = hidden1.getContext("2d");
+
+            // Wait for image to load.
+//            for (var i=0; i<10000 && !image1.complete; i++);    // >
+
+            var scalex = thresh1.width / image1.naturalWidth;
+            var scaley = thresh1.height / image1.naturalHeight;
+            ctx0.save();
+            ctx0.scale(scalex,scaley);
+            ctx0.drawImage(image1,0,0);
+            ctx0.restore();
+            ctx.drawImage(hidden1,0,0);
+            getHistogram();
+            updateCanvases(true);
+          }
+        }
+    }
+
+    function setAuto() {
+        if (lockFlag) {
+          red = autolevel;
+          rr.value = red;          rr.update();
+        } else {
+          red = autored;  green = autogreen;  blue = autoblue;
+          // update UI elements
+          rr.value = red;          rr.update();
+          gg.value = green;        gg.update();
+          bb.value = blue;         bb.update();
+        }
+    }
+
+    function setup() {
+      thresh1     = document.getElementById("thresh1");
+      image1      = document.getElementById("image1");
+      histCanvas1 = document.getElementById("histCanvas1");
+      // Slider
+      rr = document.getElementById('rr');
+      gg = document.getElementById('gg');
+      bb = document.getElementById('bb');
+      qq = document.getElementById('qq');
+      // Slider value display
+      rval = document.getElementById('rval')
+      gval = document.getElementById('gval');
+      bval = document.getElementById('bval');
+      qval = document.getElementById('qval');
+
+      initImageDescriptor();  // once only
+      updateLuts();
+
+      rr.update = function() {
+        red = parseInt(this.value);
+        rval.innerHTML = "r: "+red;
+        if (lockFlag) {
+          lockFlag = false;
+          gg.value = red;    gg.update();
+          bb.value = red;    bb.update();
+          lockFlag = true;
+        }
+        updateCanvases();
+      };
+      gg.update = function() {
+        green = parseInt(this.value);
+        gval.innerHTML = "g: "+green;
+        if (lockFlag) {
+          lockFlag = false;
+          rr.value = green;    rr.update();
+          bb.value = green;    bb.update();
+          lockFlag = true;
+        }
+        updateCanvases();
+      };
+      bb.update = function() {
+        blue = parseInt(this.value);
+        bval.innerHTML = "b: "+blue;
+        if (lockFlag) {
+          lockFlag = false;
+          rr.value = blue;    rr.update();
+          gg.value = blue;    gg.update();
+          lockFlag = true;
+        }
+        updateCanvases();
+      };
+      qq.update = function() {
+        quant = parseInt(this.value);
+        qval.innerHTML = "q: "+quant;
+        updateCanvases();
+      };
+
+      reset();
+      loadImage('lena.png');
+
+      interval = setInterval(   // Attempt to redraw every 10ms
+        function() { 
+          timerCallback() 
+        }, 100
+      );
+    }
+
+    function reset() {
+      // update UI elements
+
+      red = 128;  green = 128;  blue = 128; quant = 64;
+
+      // update UI elements
+      rr.value = red;          rr.update();     
+      gg.value = green;        gg.update();
+      bb.value = blue;         bb.update();
+      qq.value = quant;        qq.update();
+
+      rr.oninput = rr.update;
+      gg.oninput = gg.update;
+      bb.oninput = bb.update;
+      qq.oninput = qq.update;
+
+
+      invertFlag = false;
+      cumFlag = false;
+      lockFlag = false;
+      logHistFlag = false;
+      eqnFlag = false;
+
+      // Propagate into UI
+      toggleShow('a',true);         toggleShow('a',true);
+      toggleInvert(true);          toggleInvert(true);          
+      toggleLock(true);            toggleLock(true);
+      toggleCumulativeHist(true);  toggleCumulativeHist(true);
+      toggleLogHist(true);         toggleLogHist(true);         
+      toggleEqn(true);             toggleEqn(true);
+    }
+</script>
+</head>
+
+<body onload="setup();">
+      <h1>Setting Threshold</h1>
+      <table border="1">
+        <tbody><tr>
+          <td rowspan="2" style="padding: 15; vertical-align: top">
+            <canvas id="thresh1" width="200" height="200">No canvas, no image.  Sorry!</canvas>
+            <div id="out"><span>Thresheld<br>Linear</span></div>
+          </td>
+          <td valign="top">
+            <!-- .... Tabbed Display -->
+            <article id="art" class="tabs">
+              <section id="thresh" class="current">
+                <h3>Threshold</h3>
+                <div>
+                  <span>Threshold level:</span><br>
+                  <p>
+                    <input id="rr" type="range" min="0" max="255" step="1" value="128">
+                    <span id="rval">r: 128</span>
+                  </p>
+                  <p>
+                    <input id="gg" type="range" min="0" max="255" step="1" value="128">
+                    <span id="gval">g: 128</span>
+                  </p>
+                  <p>
+                    <input id="bb" type="range" min="0" max="255" step="1" value="128">
+                    <span id="bval">b: 128</span>
+                  </p>
+                </div>
+              </section>
+              <section id="quant">
+                <h3>Quantised</h3>
+                <div>
+                  <span>Number of Quantisation Levels:</span><br>
+                  <p>
+                    <input id="qq" type="range" min="2" max="64" step="1" value="64">
+                    <span id="qval">q: 64</span>
+                    <br>
+                    <input id="eqn" type="checkbox" onclick="toggleEqn()">
+                    <span>Equalise</span>
+                  </p>
+                </div>
+              </section>
+            </article> 
+          </td>
+          <td rowspan="2" style="padding: 15">
+            <img id="image1" width="200" height="200" src="lena.png">
+            <div>Original</div><br>
+            <input value="Lena" onclick="loadImage('lena.png')" type="button">
+            <input value="Roses" onclick="loadImage('roses.jpg')" type="button">
+            <input value="All-Roses" onclick="loadImage('all_roses.gif')" type="button">
+            <input value="Map" onclick="loadImage('image.png')" type="button">
+            <br>
+            <input value="Peppers" onclick="loadImage('peppers.png')" type="button">
+            <input value="Newyork" onclick="loadImage('newyork.png')" type="button">
+            <input value="Mandrill" onclick="loadImage('mandrill.jpg')" type="button">
+            <input value="F14" onclick="loadImage('F14.png')" type="button">
+          </td>
+        </tr>
+        <tr><td style="padding: 15; border-style: solid" width="250">
+          <input id="reset" type="button" value="Reset" onclick="reset()">
+          <input id="invert" type="checkbox" onclick="toggleInvert()">
+          <span>Invert</span>
+          <br>
+          <input id="auto" type="button" value="&nbsp;50%&nbsp;" onclick="setAuto()">
+<!-- Beware race conditions witn this one -->
+          <input id="lock" type="checkbox" onclick="toggleLock()">
+          <span>Lock</span>
+<!-- -->
+        </td></tr>
+        <tr><td style="padding: 15" colspan="3">
+          <canvas id="histCanvas1" style="vertical-align:bottom; padding: 15" width="600" height="200">Oh Dear!  No canvas!</canvas>
+          <span style="display:inline-block">
+            <input id="all" type="button" value="Toggle All" onclick="toggleShow('a')">
+            <div><input id="showgray" type="checkbox" onclick="toggleShow('k')">
+            Gray</div>
+            <div><input id="showred" type="checkbox" onclick="toggleShow('r')">
+            Red</div>
+            <div><input id="showgreen" type="checkbox" onclick="toggleShow('g')">
+            Green</div>
+            <div><input id="showblue" type="checkbox" onclick="toggleShow('b')">
+            Blue</div>
+            <hr>
+            <div><input id="showquant" type="checkbox" onclick="toggleShow('q')">
+            Show Quant Outline</div>
+            <div><input id="showfills" type="checkbox" onclick="toggleShow('f')">
+            Show Fills</div>
+            <div><input id="showgrid" type="checkbox" onclick="toggleShow('x')">
+            Show Grid</div>
+          </span>
+          <br>
+          <span>Image Histogram</span>
+          <input id="cum" type="checkbox" onclick="toggleCumulativeHist()">
+          <span>Cumulative</span>
+          <input id="log" type="checkbox" onclick="toggleLogHist()">
+          <span>Log Y</span>
+        </td></tr>
+      </tbody></table>
+      <canvas id="hidden1" style="display:none" width="200" height="200"></canvas>
+    
+</html>

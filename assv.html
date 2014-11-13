@@ -1,0 +1,543 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script type="text/javascript" src="jquery-1.6.2.js"></script>
+    <script>
+
+
+    var offset, blurlevel, sharpenlevel,diff,brightness;
+    var inputData, outputData;
+    var renderheight,renderwidth;
+    var mouseX,mouseY;
+
+  window.onload = function() {
+    initCanvas();
+  }
+
+
+  function stepForward() {
+    var video = document.getElementsByTagName("video")[0];
+    video.pause();
+    var now = video.currentTime;
+    video.currentTime = now + 0.03;
+  }
+
+  function stepBackward() {
+    var video = document.getElementsByTagName("video")[0];
+    video.pause();
+    var now = video.currentTime;
+    video.currentTime = now - 0.03;
+  }
+
+  function initCanvas() {
+    var renderheight = document.getElementById("currHeight").value;
+    var renderwidth = document.getElementById("currWidth").value;
+
+
+    var video = document.getElementsByTagName("video")[0];
+    var c1 = document.getElementById("c1");
+    var ct1 = c1.getContext("2d");
+    
+    var c2 = document.getElementById("c2");
+    var ct2 = c2.getContext("2d");
+     
+    var c3 = document.getElementById("c3");
+    var ct3 = c3.getContext("2d");
+
+
+    if(renderheight != "" )
+    {
+        ct3.height=renderheight;
+        ct2.height=renderheight;
+        ct1.height=renderheight;
+        c3.height=renderheight;
+        c2.height=renderheight;
+        c1.height=renderheight;
+    
+    }
+
+    if(renderwidth != "")
+    {
+        ct3.width=renderwidth;
+        ct2.width=renderwidth;
+        ct1.width=renderwidth;
+        c3.width=renderwidth;
+        c2.width=renderwidth;
+        c1.width=renderwidth;
+        
+    }
+    var scaleY = ct1.height / video.naturalHeight;
+    var scaleX = ct1.width / video.naturalWidth;
+    //scale the canvas
+    ct1.scale(scaleX,scaleY);
+    ct2.scale(scaleX,scaleY);
+    ct3.scale(scaleX,scaleY);
+
+    ct1_w = ct1.width;
+    ct1_h = ct1.height;
+    ct2_w = ct2.width;
+    ct2_h = ct2.height;
+
+    // Use the mouse y location when the mouse is on the left half of the frame 
+    //difference video canvas, to change the number of frames different (1-10), and when on the right half of the canvas, to change the brightness of the effect. 
+    c3.addEventListener("mouseover",function(evt)
+        {
+         onMouseMove(evt);
+         if(mouseX<c3.width/2)
+         {
+            
+            if(mouseY<c3.height/10)
+            {
+                diff=0;
+            }else if(mouseY<2*c3.height/10 && mouseY> c3.height/10)
+            {
+                diff = 2;
+            }else if(mouseY<3*c3.height/10 && mouseY> 2*c3.height/10)
+            {
+                diff = 3;
+            }else if(mouseY<4*c3.height/10 && mouseY> 3*c3.height/10)
+            {
+                diff = 4;
+            }else if(mouseY<5*c3.height/10 && mouseY> 4*c3.height/10)
+            {
+                diff = 5;
+            }else if(mouseY<6*c3.height/10 && mouseY> 5*c3.height/10)
+            {
+                diff = 6;
+            }else if(mouseY<7*c3.height/10 && mouseY> 6*c3.height/10)
+            {
+                diff =7;
+            }else if(mouseY<8*c3.height/10 && mouseY> 7*c3.height/10)
+            {
+                diff = 8;
+            }else if(mouseY<9*c3.height/10 && mouseY> 8*c3.height/10)
+            {
+                diff = 9;
+            }else if(mouseY<10*c3.height/10 && mouseY> 9*c3.height/10)
+            {
+                diff = 10;
+
+            }
+            console.log(diff);
+        }else if(mouseX>c3.width/2)
+        {
+            if(mouseY<c3.height/10)
+            {
+                brightness=100;
+            }else if(mouseY<2*c3.height/10 && mouseY> c3.height/10)
+            {
+                brightness = 90;
+            }else if(mouseY<3*c3.height/10 && mouseY> 2*c3.height/10)
+            {
+                brightness = 80;
+            }else if(mouseY<4*c3.height/10 && mouseY> 3*c3.height/10)
+            {
+                brightness = 70;
+            }else if(mouseY<5*c3.height/10 && mouseY> 4*c3.height/10)
+            {
+                brightness = 60;
+            }else if(mouseY<6*c3.height/10 && mouseY> 5*c3.height/10)
+            {
+                brightness = 50;
+            }else if(mouseY<7*c3.height/10 && mouseY> 6*c3.height/10)
+            {
+                brightness =40;
+            }else if(mouseY<8*c3.height/10 && mouseY> 7*c3.height/10)
+            {
+                brightness = 30;
+            }else if(mouseY<9*c3.height/10 && mouseY> 8*c3.height/10)
+            {
+                brightness = 20;
+            }else if(mouseY<10*c3.height/10 && mouseY> 9*c3.height/10)
+            {
+                brightness = 10;
+
+            }
+            console.log(brightness);
+
+        }            
+    },false);
+       
+
+    video.addEventListener("timeupdate",  function(){
+        paintFrame(video,ct1,ct2,ct3,ct1_w,ct1_h,ct2_w,ct2_h,c3);}, false);
+    flen = 0;
+    framestack = [];
+    frame2 = [];
+    frame4 = [];
+
+  }
+
+
+
+
+function edgeDetect(d,dout,level)
+{
+    for (var i = 0; i < d.data.length-4-d.width*4; i++)
+    {
+        if ((i & 3)<3) 
+        {         // avoid alpha
+        dout.data[i] = Math.abs(d.data[i+4+d.width*4]-d.data[i])*level;
+        }
+    }
+}
+
+function pencilDraw(d, dout,level){
+                
+    for (var i = 0; i < d.data.length-4-d.width*4; i++)
+        {
+            if ((i & 3)<3) 
+            {         // avoid alpha
+            dout.data[i] = Math.abs(d.data[i+4+d.width*4]-d.data[i])*level;
+            }
+        }
+
+        for (var i = 0; i < d.width*d.height*4; i+=4) 
+        {
+            //invert color
+            dout.data[i+0]=255-dout.data[i+0];    dout.data[i+1]=255-dout.data[i+1];  dout.data[i+2]=255-dout.data[i+2];
+            var grey = (dout.data[i+0]+dout.data[i+1]+dout.data[i+2])/3;
+            dout.data[i+0]=grey; dout.data[i+1]=grey; dout.data[i+2]=grey; dout.data[i+3]=255;
+        }
+                
+}
+
+function _3dDraw(d, offset, dout){
+
+    for( var j = 0; j < d.height ;j++)
+    {
+        for(var i = 0; i < d.width; i++)
+        {
+            var pos = (j*d.width+i)*4;
+            var posL = pos - offset;
+            var posR = pos + offset;
+            if(posL<d.width)
+                posL = 0;
+            if(posR > d.width*4)
+                posR = d.width*4;
+
+            var red = d.data[posL+2];
+                    var green = d.data[pos+1];
+                    var blue = d.data[posR+0];
+
+                    dout.data[pos+0]=red;  dout.data[pos+1]=green;      dout.data[pos+2]=blue;
+                    dout.data[i+3]=255;
+        }
+    }
+    
+}
+
+function matrixcal(d,mat,dout){
+    for (var r = 1; r < d.width - 1; r++) {
+
+    // each pixel is 4 channels (RGBA)--this is the first channel
+    var centerRedIndex = (r * d.width) * 4;
+    
+    // add 4 because we know we're starting at column 1, below:
+    centerRedIndex += 4;
+
+    // get relative up and down pixel
+    var upRedIndex = centerRedIndex - d.width*4; // row above
+    var downRedIndex = centerRedIndex + d.width*4; // row below
+
+    // column on dest/src image
+    for (var c = 1; c < d.height - 1; c++) {
+
+        // channel on dest/src image
+        for (var h = 0; h < 3; h++) {
+            var sum = 0;
+
+            // NW (northwest)
+            var chanIndex = (upRedIndex - 4) + h;
+            sum += d.data[chanIndex] * mat[0][0];
+            // N
+            chanIndex += 4; 
+            sum += d.data[chanIndex] * mat[0][1];
+            // NE
+            chanIndex += 4; 
+            sum += d.data[chanIndex] * mat[0][2];
+            // W
+            chanIndex = (centerRedIndex - 4) + h;
+            sum += d.data[chanIndex] * mat[1][0];
+             // Center
+            chanIndex += 4; // next pixel
+            sum += d.data[chanIndex] * mat[1][1];
+            // E
+            chanIndex += 4; // next pixel
+            sum += d.data[chanIndex] * mat[1][2];
+             // SW
+            chanIndex = (downRedIndex - 4) + h;
+            sum += d.data[chanIndex] * mat[2][0];
+             // S
+            chanIndex += 4; // next pixel
+            sum += d.data[chanIndex] * mat[2][1];
+            // SE
+            chanIndex += 4; // next pixel
+            sum += d.data[chanIndex] * mat[2][2];
+// now we have the sum, apply the divisor and clamp:
+            sum /= 9;
+            sum = Math.min(Math.max(sum, 0), 255);
+// and store in the dest pixels
+            dout.data[centerRedIndex+h] = sum;
+            }
+
+        // set alpha on this pixel to fully opaque:
+        
+        // next pixel:
+        centerRedIndex += 4;
+        upRedIndex += 4;
+        downRedIndex += 4;
+
+        } 
+
+        // for cols
+    } // for rows
+    
+
+}
+
+function cartoonDraw(d,edgedata,blurdata,dout,lvblur,lvedge){
+            
+    var blurmat=[[1/lvblur,1/lvblur,1/lvblur],[1/lvblur,1/lvblur,1/lvblur],[1/lvblur,1/lvblur,1/lvblur]];
+
+    matrixcal(d,blurmat,blurdata);
+    
+    edgeDetect(d,edgedata,lvedge);
+    
+    
+    for (var i = 0; i < d.data.length-4-d.width*4; i++){
+            dout.data[i+0]=255+blurdata.data[i+0]-edgedata.data[i+0];
+            dout.data[i+1]=255+blurdata.data[i+1]-edgedata.data[i+1];
+            dout.data[i+2]=255+blurdata.data[i+2]-edgedata.data[i+2];
+            dout.data[i+3]=255+blurdata.data[i+3]-edgedata.data[i+3];
+     }
+
+}
+
+function getMousePos(canvas,evt) {
+        //var rect = canvas.getBoundingClientRect();
+        console.log("called");
+        return {
+         x: event.clientX -canvas.left,
+         y: event.clientY - canvas.top
+        };
+}
+
+function doMouseDown(evt){
+    canvas_x = evt.pageX;
+    canvas_y = evt.pageY;
+    alert("X=" + canvas_x + "Y="+canvas_y);
+}
+
+function onMouseMove(evt){
+    mouseX=evt.layerX;
+    mouseY=evt.layerY;
+}
+function frameDifference(diff,ct2,ct3,c3_h,c3_w,c3){
+     //ten frame difference
+    d = ct2.getImageData(0, 0, c3_h, c3_w);
+    if (flen < diff) { 
+        flen = framestack.push(d);
+    }
+    dout = framestack[0];     // Pick the oldest entry
+    for (var i = 0; i < dout.data.length; i++)
+        if ((i & 3)<3)          // avoid alpha
+            dout.data[i+0] = (dout.data[i+0]-d.data[i+0])*10;
+            dout.data[i+1] = (dout.data[i+1]-d.data[i+1])*10;
+            dout.data[i+2] = (dout.data[i+2]-d.data[i+2])*10;
+    for (var i = 0; i < d.width*d.height*4; i+=4) {
+            dout.data[i+0]=255-dout.data[i+0];    dout.data[i+1]=255-dout.data[i+1];  dout.data[i+2]=255-dout.data[i+2];
+            var grey= (dout.data[i+0]+dout.data[i+1]+dout.data[i+2])/3;
+            dout.data[i+0] = grey-brightness;
+            dout.data[i+1] = grey-brightness;
+            dout.data[i+2] = grey-brightness; 
+            dout.data[i+3] = 255; 
+    }
+
+              
+    ct3.putImageData(dout, 0, 0);
+    framestack.shift();         // Pop the oldest off
+    framestack.push(d);     // push the next on
+} 
+
+
+function paintFrame(video,ct1,ct2,ct3,ct1_w,ct1_h,ct2_w,ct2_h,c3) 
+{
+
+    var drawAsPencil = document.getElementById("pencilDraw");
+    var drawAsCartoon = document.getElementById("cartoonDraw");
+    var drawAs3D = document.getElementById("3dDraw");
+
+    var drawAsFrameDifference = document.getElementById("frameDifference");
+
+    //effect parameters
+    blurlevel = document.getElementById("blurLevel").value;
+    sharpenlevel = document.getElementById("sharpenLevel").value;
+    offset = document.getElementById("Level3d").value;
+    diff =  document.getElementById("difference").value;
+
+    var renderheight = document.getElementById("currHeight").value;
+    var renderwidth = document.getElementById("currWidth").value;
+
+
+
+    if(blurlevel == ""){
+        blurlevel = 9;
+    }
+    if(sharpenlevel == ""){
+        sharpenlevel = 1;
+    }
+    if(offset == ""){
+        offset = 32;
+    }
+    if(diff == ""){
+        diff = 10;
+    }
+    if(renderwidth =="" && renderheight == "")
+    {
+        ct1.drawImage(video,0,0,320,192);
+        frame = ct1.getImageData(0, 0, 320,192);
+        frameOut = ct1.getImageData(0, 0,320,192);
+        temp1 =  ct1.getImageData(0, 0, 320, 192);
+        temp2 =  ct1.getImageData(0, 0, 320, 192);
+        c3_w=320;
+        c3_h=192;
+        //ct2.putImageData(frameOut, 0, 0); 
+    }
+    else if(renderwidth =="")
+    {
+        ct1.drawImage(video,0,0,320,ct1_h);
+        frame = ct1.getImageData(0, 0, 320,ct1_h);
+        frameOut = ct1.getImageData(0, 0,320,ct1_h);
+        temp1 =  ct1.getImageData(0, 0, 320, ct1_h);
+        temp2 =  ct1.getImageData(0, 0, 320, ct1_h);
+        c3_w=320;
+        c3_h=ct1_h;
+        //ct2.putImageData(frameOut, 0, 0); 
+    }
+    else if(renderheight == "")
+    {
+        ct1.drawImage(video,0,0,ct1_w,192);
+        frame = ct1.getImageData(0, 0, ct1_w,192);
+        frameOut = ct1.getImageData(0, 0,ct1_w,192);
+        temp1 =  ct1.getImageData(0, 0, ct1_w, 192);
+        temp2 =  ct1.getImageData(0, 0, ct1_w, 192);
+        c3_w=ct1_w;
+        c3_h=192;
+        //ct2.putImageData(frameOut, 0, 0); 
+    }
+    else 
+    {
+        ct1.drawImage(video,0,0,ct1_w,ct1_h);
+        frame = ct1.getImageData(0, 0, ct1_w,ct1_h);
+        frameOut = ct1.getImageData(0, 0,ct1_w,ct1_h);
+        temp1 =  ct1.getImageData(0, 0, ct1_w, ct1_h);
+        temp2 =  ct1.getImageData(0, 0, ct1_w, ct1_h);
+        c3_w=ct1_w;
+        c3_h=ct1_h;
+       // ct2.putImageData(frameOut, 0, 0); 
+    }
+       
+    if(drawAsPencil.checked){  
+            
+            pencilDraw(frame,frameOut,sharpenlevel);
+            ct2.putImageData(frameOut, 0, 0);
+
+     }else if(drawAsCartoon.checked){
+        cartoonDraw(frame,temp1,temp2,frameOut,blurlevel,sharpenlevel);
+        ct2.putImageData(frameOut, 0, 0);
+
+     }else if(drawAs3D.checked){
+        _3dDraw(frame,offset,frameOut);
+         ct2.putImageData(frameOut, 0, 0);
+     
+    }else if(drawAsFrameDifference.checked){
+        pencilDraw(frame,frameOut,sharpenlevel);
+        ct2.putImageData(frameOut, 0, 0);
+        frameDifference(diff,ct2,ct3,c3_w,c3_h,c3);
+        
+    }
+       
+}
+
+</script>
+</head>
+<body>
+    <h1>Assigment/Video Processing</h1>
+    <div>
+        <video controls="" height="192" width="320">
+            <source src="video.ogg">
+        </video>
+    </div>
+    <button onclick="javascript:stepBackward()">&lt;</button>
+    <button onclick="javascript:stepForward()">&gt;</button>
+    <div>
+        <canvas id="c1" width="320" height="192" style="display:none" ></canvas>
+        <canvas id="c2" width="320" height="192"></canvas>
+
+        <canvas id="c3" width="320" height="192"  tabindex='1'></canvas>
+        <!-- <canvas id="c4" width="320" height="192"></canvas>
+         <canvas id="c5" width="320" height="192"></canvas><span>Motion 10-frames</span> -->
+
+    </div>
+
+    <tr>
+        <td>
+            <form>
+            <label><input id="pencilDraw" name="drawType"type="radio" value="p">
+            Pencil Draw</label>
+            
+            <label><input id="cartoonDraw" name="drawType" type="radio" value="c">Cartoon Draw</label>
+            
+        
+            <label><input id="3dDraw" name="drawType" type="radio" value="3d">
+            3D Draw</label>
+
+            <label><input id="frameDifference" name="drawType" type="radio" value="frameDifference">
+            Frame Difference</label>
+        </form>
+        </td>
+
+    </tr>
+
+    <tr>
+        <td>
+        <form>
+            <span>Sharpen level</span>
+            <input id="sharpenLevel" type="text" name="sharpenlevel">
+
+            <span>Blur level</span>
+            <input id="blurLevel" type="text" name="blurlevel">
+
+            <span>Offset for 3D</span>
+            <input id="Level3d" type="text" name="3devel">
+
+
+            <span>frame difference </span>
+            <input id="difference" type="text" name="difference">
+
+        </form>
+
+
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <form>
+                
+                <span>width</span>
+                <input id="currWidth" type="text" name="width" >
+                <span>height</span>
+                <input id="currHeight" type="text" name="height" >
+            </form>
+        </td>
+    </tr>
+    <tr>
+        <td>
+        <input id="submit" type="button" value="Submit" onclick="initCanvas()">
+        
+    </td>
+    </tr>
+</table>
+</body>
+
+    </html>

@@ -1,0 +1,400 @@
+<html>
+	<head>
+		<script>
+		var offset, blurlevel, sharpenlevel;
+		var inputData, outputData;
+		var renderheight,renderwidth;
+
+		function getdata(c,x,y,w,h) {
+          var d;
+          try {
+            try {
+              d = c.getImageData(x,y,w,h);
+            } catch (e) {
+              netscape.security.PrivilegeManager.enablePrivilege("UniversalBrowserRead");
+              d = c.getImageData(x,y,w,h);
+            }
+          } catch (e) {
+            throw new Error("unable to access image data: " + e);
+          }
+          return(d);
+        }
+
+      function matrixcal(d,mat,dout){
+      	for (var r = 1; r < d.width - 1; r++) {
+
+        // each pixel is 4 channels (RGBA)--this is the first channel
+        var centerRedIndex = (r * d.width) * 4;
+        
+        // add 4 because we know we're starting at column 1, below:
+        centerRedIndex += 4;
+
+        // get relative up and down pixel
+        var upRedIndex = centerRedIndex - d.width*4; // row above
+        var downRedIndex = centerRedIndex + d.width*4; // row below
+
+        // column on dest/src image
+        for (var c = 1; c < d.height - 1; c++) {
+
+            // channel on dest/src image
+            for (var h = 0; h < 3; h++) {
+                var sum = 0;
+                // NW 
+                var chanIndex = (upRedIndex - 4) + h;
+                sum += d.data[chanIndex] * mat[0][0];
+
+                // N
+                chanIndex += 4; 
+                sum += d.data[chanIndex] * mat[0][1];
+
+                // NE
+                chanIndex += 4; 
+                sum += d.data[chanIndex] * mat[0][2];
+
+                // W
+                chanIndex = (centerRedIndex - 4) + h;
+                sum += d.data[chanIndex] * mat[1][0];
+
+                // Center
+                chanIndex += 4; 
+                sum += d.data[chanIndex] * mat[1][1];
+
+                // E
+                chanIndex += 4; 
+                sum += d.data[chanIndex] * mat[1][2];
+
+                // SW
+                chanIndex = (downRedIndex - 4) + h;
+                sum += d.data[chanIndex] * mat[2][0];
+
+                // S
+                chanIndex += 4; 
+                sum += d.data[chanIndex] * mat[2][1];
+
+                // SE
+                chanIndex += 4; 
+                sum += d.data[chanIndex] * mat[2][2];
+
+                sum /= 9;
+                sum = Math.min(Math.max(sum, 0), 255);
+
+                // and store in the dest pixels
+                dout.data[centerRedIndex+h] = sum;
+            }
+
+            // next pixel:
+            centerRedIndex += 4;
+            upRedIndex += 4;
+            downRedIndex += 4;
+          } 
+
+            // for cols
+         } // for rows
+    	}
+
+      function _3dDraw(d, offset, dout){
+
+        for( var j = 0; j < d.height ;j++)
+        {
+            for(var i = 0; i < d.width; i++)
+            {
+                var pos = (j*d.width+i)*4;
+                var posL = pos - offset;
+                var posR = pos + offset;
+                if(posL<d.width)
+                    posL = 0;
+                if(posR > d.width*4)
+                    posR = d.width*4;
+
+                var red = d.data[posL+2];
+                var green = d.data[pos+1];
+                var blue = d.data[posR+0];
+
+                dout.data[pos+0]=red;  
+                dout.data[pos+1]=green;      
+                dout.data[pos+2]=blue;
+                dout.data[i+3]=255;
+            }
+        }
+        
+      }
+
+      function pencilDraw(d, dout,level){
+      		
+      	for (var i = 0; i < d.data.length-4-d.width*4; i++)
+              {
+                  if ((i & 3)<3) 
+                  {         // avoid alpha
+                  dout.data[i] = Math.abs(d.data[i+4+d.width*4]-d.data[i])*level;
+                  }
+              }
+
+              for (var i = 0; i < d.width*d.height*4; i+=4) 
+              {
+              	//invert color
+                  dout.data[i+0]=255-dout.data[i+0];    
+                  dout.data[i+1]=255-dout.data[i+1];  
+                  dout.data[i+2]=255-dout.data[i+2];
+                  var grey = (dout.data[i+0]+dout.data[i+1]+dout.data[i+2])/3;
+                  dout.data[i+0]=grey; 
+                  dout.data[i+1]=grey; 
+                  dout.data[i+2]=grey; 
+                  dout.data[i+3]=255;
+              }
+              
+      }
+
+      function edgeDetect(d,dout,level){
+      	for (var i = 0; i < d.data.length-4-d.width*4; i++)
+              {
+                  if ((i & 3)<3) 
+                  {         // avoid alpha
+                  dout.data[i] = Math.abs(d.data[i+4+d.width*4]-d.data[i])*level;
+                  }
+              }
+          
+      }
+
+      function cartoonDraw(d,edgedata,blurdata,dout,lvblur,lvedge){
+      	
+      	var blurmat=[[1/lvblur,1/lvblur,1/lvblur],[1/lvblur,1/lvblur,1/lvblur],[1/lvblur,1/lvblur,1/lvblur]];
+
+      	matrixcal(d,blurmat,blurdata);
+      	
+      	edgeDetect(d,edgedata,lvedge);
+      	
+      	
+      	for (var i = 0; i < d.data.length-4-d.width*4; i++)
+              {
+              	dout.data[i+0]=255+blurdata.data[i+0]-edgedata.data[i+0];
+              	dout.data[i+1]=255+blurdata.data[i+1]-edgedata.data[i+1];
+              	dout.data[i+2]=255+blurdata.data[i+2]-edgedata.data[i+2];
+              	dout.data[i+3]=255+blurdata.data[i+3]-edgedata.data[i+3];
+       		}
+      }
+      
+
+      function go()
+      {
+
+  		  var ctx,hiddenctx ; //context
+  	
+        var scaleX, scaleY;
+
+  		  var myCanvas = document.getElementById("result");
+  		  var myHidden = document.getElementById("hidden");
+  		  ctx = document.getElementById("result").getContext('2d');
+  		  hiddenctx = document.getElementById("hidden").getContext('2d');
+  		  var img = document.getElementById("Ioriginal");
+
+  		   
+        //method
+        var drawAsPencil = document.getElementById("pencilDraw");
+        var drawAsCartoon = document.getElementById("cartoonDraw");
+        var drawAs3D = document.getElementById("3dDraw");
+
+        //effect parameters
+        blurlevel = document.getElementById("blurLevel").value;
+        sharpenlevel = document.getElementById("sharpenLevel").value;
+        offset = document.getElementById("Level3d").value;
+        renderheight = document.getElementById("currHeight").value;
+        renderwidth = document.getElementById("currWidth").value;
+
+        //default parameters
+        if(blurlevel == "")
+        {
+        	blurlevel=9;
+        }
+      
+        if(sharpenlevel == "")
+        {
+        	sharpenlevel=1;
+        }
+        
+        if(offset == "")
+        {
+        	offset=32;
+        }
+        
+        if(renderheight != "" )
+        {
+        	myCanvas.height=renderheight;
+        	myHidden.height=renderheight;
+        	scaleY = myCanvas.height / img.naturalHeight;
+        }
+
+        if(renderwidth != "")
+        {
+        	myCanvas.width=renderwidth;
+        	myHidden.width=renderheight;
+        	scaleX = myCanvas.width / img.naturalWidth;
+        }
+
+        if(drawAsPencil.checked)
+         {	
+         	
+        	while (!img.complete)
+		 		    scaleX = myCanvas.width / img.naturalWidth;
+    	 		  scaleY = myCanvas.height / img.naturalHeight;
+    	 		  ctx.scale(scaleX,scaleY);
+    	 		  ctx.scale(scaleX,scaleY);
+         		ctx.drawImage(img, 0, 0);
+         		hiddenctx.scale(scaleX,scaleY);
+         		hiddenctx.drawImage(img, 0, 0);
+         
+     		    outputData = getdata(hiddenctx, 0, 0, myHidden.width, myHidden.height);
+        	  inputData= getdata(ctx, 0, 0, myCanvas.width, myCanvas.height);
+            
+		      pencilDraw(inputData, outputData,sharpenlevel);
+
+         }
+        else if(drawAsCartoon.checked)
+         {
+         	
+         	while (!img.complete)
+		 		    scaleX = myCanvas.width / img.naturalWidth;
+    	 		  scaleY = myCanvas.height / img.naturalHeight;
+    	 		  ctx.scale(scaleX,scaleY);
+         		ctx.drawImage(img, 0, 0);
+         		hiddenctx.scale(scaleX,scaleY);
+         		hiddenctx.drawImage(img, 0, 0);
+         
+     		    outputData = getdata(hiddenctx, 0, 0, myHidden.width, myHidden.height);
+        	  inputData= getdata(ctx, 0, 0, myCanvas.width, myCanvas.height);
+            
+         	   var tempData2 = getdata(ctx, 0, 0, myCanvas.width, myCanvas.height);
+             var tempData3 = getdata(ctx, 0, 0, myCanvas.width, myCanvas.height);
+        	
+         	cartoonDraw(inputData,tempData2,tempData3,outputData,blurlevel,sharpenlevel);
+         }
+         else if(drawAs3D.checked)
+         {
+         	
+         	while (!img.complete)
+		 		    scaleX = myCanvas.width / img.naturalWidth;
+    	 		  scaleY = myCanvas.height / img.naturalHeight;
+    	 		  ctx.scale(scaleX,scaleY);
+         		ctx.drawImage(img, 0, 0);
+         		hiddenctx.scale(scaleX,scaleY);
+         		hiddenctx.drawImage(img, 0, 0);
+         
+     		    outputData = getdata(hiddenctx, 0, 0, myHidden.width, myHidden.height);
+        	  inputData= getdata(ctx, 0, 0, myCanvas.width, myCanvas.height);
+
+         	_3dDraw(inputData,offset,outputData);
+         }
+		
+      	 //output on canvas
+        ctx.putImageData(outputData, 0, 0);
+        
+
+      }
+
+      function reset()
+      {
+      	//reset all the parameters
+      	blurlevel = 9;
+      	document.getElementById("blurLevel").value=""
+      	sharpenlevel = 1;
+      	document.getElementById("sharpenLevel").value=""
+      	offset = 32;
+      	document.getElementById("Level3d").value=""
+      	renderheight = 300;
+      	document.getElementById("currHeight").value=""
+      	renderwidth = 300;
+      	document.getElementById("currWidth").value=""
+
+      	var ctx_clean;
+      	var myCanvas_clean = document.getElementById("result");
+      	ctx_clean = myCanvas_clean.getContext("2d");
+      	var img = document.getElementById("Ioriginal");
+      	myCanvas_clean.height=renderheight;
+      	myCanvas_clean.width=renderwidth;
+      	scaleY = myCanvas_clean.height / img.naturalHeight;
+      	scaleX = myCanvas_clean.width / img.naturalWidth;
+      	while (!img.complete)
+  		 		
+      	 		ctx_clean.scale(scaleX,scaleY);
+           	ctx_clean.drawImage(img, 0, 0);
+
+        var outputData_clean = getdata(ctx_clean, 0, 0, myCanvas_clean.width, myCanvas_clean.height);
+        ctx_clean.putImageData(outputData_clean, 0, 0);
+
+      }
+		</script>
+	</head>
+	<body>
+		<h1>Assigment/Image Processing</h1>
+		
+			<table>
+				<tr>
+					<td>
+						<canvas id = "result" width="300" height="300">
+						</canvas>
+						 <canvas id="hidden" style="display:none" width="300" height="300"></canvas>
+					</td>
+
+					<td>
+						<img id="Ioriginal" width="300" height="300" src="lena.png">
+						<div>Orignial</div>
+						<br>
+						<input value="Lena" onclick="loadImage('lena.png')" type="button">
+						
+					</td>
+				</tr>
+
+				<tr>
+					<td>
+						<form>
+						<label><input id="pencilDraw" name="drawType"type="radio" value="p">
+						Pencil Draw</label>
+						
+						<label><input id="cartoonDraw" name="drawType" type="radio" value="c">Cartoon Draw</label>
+						
+					
+						<label><input id="3dDraw" name="drawType" type="radio" value="3d">
+						3D Draw</label>
+					</form>
+					</td>
+
+				</tr>
+
+				<tr>
+					<td>
+					<form>
+						<span>Sharpen level</span>
+						<input id="sharpenLevel" type="text" name="sharpenlevel">
+
+						<span>Blur level</span>
+						<input id="blurLevel" type="text" name="blurlevel">
+
+						<span>Offset for 3D</span>
+						<input id="Level3d" type="text" name="3devel">
+					</form>
+
+
+					</td>
+				</tr>
+				<tr>
+					<td>
+						<form>
+							
+							<span>width</span>
+							<input id="currWidth" type="text" name="width">
+							<span>height</span>
+							<input id="currHeight" type="text" name="height">
+						</form>
+					</td>
+				</tr>
+				<tr>
+					<td>
+					<input id="submit" type="button" value="Submit" onclick="go()">
+					<input id="reset" type="button" value="Reset" onclick="reset()">
+				</td>
+				</tr>
+			</table>
+	
+
+	</body>
+	<foot></foot>
+</html>
